@@ -2,7 +2,7 @@ name: Split VLESS subscriptions
 
 on:
   schedule:
-    - cron: "0 4 * * *"   # هر روز 04:00 UTC
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 jobs:
@@ -20,9 +20,10 @@ jobs:
           https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/refs/heads/main/Protocols/vless.txt \
           -o Protocols/vless.txt
 
-      - name: Split configs
+      - name: Split and filter configs
         run: |
           mkdir -p Output
+          mkdir -p Output/gemini
 
           > Output/vless_general.txt
           > Output/vless_download.txt
@@ -32,13 +33,13 @@ jobs:
           while IFS= read -r line; do
             [ -z "$line" ] && continue
 
-            # Gemini candidates (negative filtering only)
+            # Gemini candidates (negative filtering)
             if echo "$line" | grep -Eiq 'reality|tls' \
-               && ! echo "$line" | grep -Eiq 'ovh|hetzner|azure|google|amazon'; then
+               && ! echo "$line" | grep -Eiq 'ovh|hetzner|azure|google|amazon|digitalocean'; then
               echo "$line" >> Output/vless_gemini_candidates.txt
             fi
 
-            # Download (UDP / high bandwidth)
+            # Download (UDP / hy2)
             if echo "$line" | grep -Eiq 'udp|hysteria|hy2'; then
               echo "$line" >> Output/vless_download.txt
             fi
@@ -48,10 +49,20 @@ jobs:
               echo "$line" >> Output/vless_stream.txt
             fi
 
-            # General (fallback)
+            # General
             echo "$line" >> Output/vless_general.txt
 
           done < Protocols/vless.txt
+
+      - name: Split Gemini into 500-line chunks
+        run: |
+          split -l 500 Output/vless_gemini_candidates.txt Output/gemini/vless_gemini_
+          i=1
+          for f in Output/gemini/vless_gemini_*; do
+            mv "$f" "Output/gemini/vless_gemini_${i}.txt"
+            i=$((i+1))
+          done
+          rm Output/vless_gemini_candidates.txt
 
       - name: Commit outputs
         run: |

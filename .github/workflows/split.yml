@@ -1,0 +1,62 @@
+name: Split VLESS subscriptions
+
+on:
+  schedule:
+    - cron: "0 4 * * *"   # هر روز 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download raw source
+        run: |
+          mkdir -p Protocols
+          curl -L --fail \
+          https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/refs/heads/main/Protocols/vless.txt \
+          -o Protocols/vless.txt
+
+      - name: Split configs
+        run: |
+          mkdir -p Output
+
+          > Output/vless_general.txt
+          > Output/vless_download.txt
+          > Output/vless_stream.txt
+          > Output/vless_gemini_candidates.txt
+
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+
+            # Gemini candidates (negative filtering only)
+            if echo "$line" | grep -Eiq 'reality|tls' \
+               && ! echo "$line" | grep -Eiq 'ovh|hetzner|azure|google|amazon'; then
+              echo "$line" >> Output/vless_gemini_candidates.txt
+            fi
+
+            # Download (UDP / high bandwidth)
+            if echo "$line" | grep -Eiq 'udp|hysteria|hy2'; then
+              echo "$line" >> Output/vless_download.txt
+            fi
+
+            # Stream (stable TCP/TLS)
+            if echo "$line" | grep -Eiq 'tls|tcp|ws'; then
+              echo "$line" >> Output/vless_stream.txt
+            fi
+
+            # General (fallback)
+            echo "$line" >> Output/vless_general.txt
+
+          done < Protocols/vless.txt
+
+      - name: Commit outputs
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add Output/
+          git commit -m "Auto update split subscriptions" || exit 0
+          git push
